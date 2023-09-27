@@ -1,5 +1,6 @@
 #  coding: utf-8 
 import socketserver
+import os 
 
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
 # 
@@ -32,7 +33,44 @@ class MyWebServer(socketserver.BaseRequestHandler):
     def handle(self):
         self.data = self.request.recv(1024).strip()
         print ("Got a request of: %s\n" % self.data)
-        self.request.sendall(bytearray("OK",'utf-8'))
+        # Decode data from bytestring to string
+        decoded = self.data.decode("utf-8")
+        # Split into words to check for methods that can be handled
+        words = decoded.split()
+        # Check if method is not get and if so return 405 status code and prevent rest from running
+        if words[0] != "GET":
+            self.request.sendall(bytearray("HTTP/1.1 405 Method Not Allowed\nContent-Type: text/plain; charset=utf-8\n", 'utf-8'))
+            return   
+        # Read the path and use the os library to check if it exists or needs redirect
+        path = words[1] 
+        folder = "www"
+        if os.path.isdir(folder + path + "/") and not path.endswith("/"):
+            actual_path = path + "/"
+            self.request.sendall(bytearray(f"HTTP/1.1 301 Moved Permanently\nLocation: {actual_path}\nContent-Type: text/plain; charset=utf-8\n", 'utf-8'))
+            return
+        # Noe check if path to file or directory is valid, using exists instead to check for files
+        if os.path.exists(folder + path):
+            # Check if path ends with "/", in which case add index.html as per requirements, save www in actual path to open file
+            actual_path = folder + path
+            if actual_path.endswith("/"):
+                actual_path += "index.html"
+            content_type = ""
+            # Check if html file or css file asked for and save content type to have mime support
+            if actual_path.endswith(".html"):
+                content_type = "text/html"
+            elif actual_path.endswith(".css"):
+                content_type = "text/css"
+            # Check if file that does not exist
+            if content_type == "":
+                self.request.sendall(bytearray("HTTP/1.1 404 Not Found\nContent-Type: text/plain; charset=utf-8\n", 'utf-8'))
+                return
+            # Open the file     
+            file = open(actual_path).read()
+            self.request.sendall(bytearray(f"HTTP/1.1 200 OK\nContent-Type: {content_type}; charset=utf-8\n\n{file}\n", 'utf-8'))
+        # If path not found, then return 404
+        else:
+            self.request.sendall(bytearray("HTTP/1.1 404 Not Found\nContent-Type: text/plain; charset=utf-8\n", 'utf-8'))
+        
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 8080
